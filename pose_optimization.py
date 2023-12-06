@@ -325,12 +325,7 @@ class PoseOptimizer():
 
     def get_depth_map_CAPS(self, image_pair_correspondence):
 
-        # for sintel
-        if self.dataset_type == 'Sintel':
-            depth_gt, gt_depth_file_list = self.get_gt_depth_file_list()
-        
-        if self.dataset_type == 'TUM':
-            depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
+        depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
 
         # init rgb and depth file
         depth_dir = self.pred_path + '/depth_dpt_beit_large_512/depth/'
@@ -347,14 +342,6 @@ class PoseOptimizer():
             scaled_cloud_camera_frame[key] = defaultdict()
             
             frame1, frame2 = key
-            # init indices
-            # valid_indices = np.where((value[:,:,0]!=-1)&(value[:,:,1]!=-1))
-            # y_indices = valid_indices[0]
-            # x_indices = valid_indices[1]
-            # y_frame2 = value[y_indices, x_indices, 0]
-            # x_frame2 = value[y_indices, x_indices, 1]
-
-
             x_frame1 = value[:, 0]
             y_frame1 = value[:, 1]
 
@@ -374,50 +361,24 @@ class PoseOptimizer():
             threshold = np.percentile(predicted_depth, self.percentile_threshold)
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
-            # sintel
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
+
+            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            if self.use_gt_depth == True:
+                # Load the gt depth map
+                predicted_depth = predicted_depth_gt
+            if self.scale_factor == None:
+                reshaped_pred_depth = predicted_depth.reshape(-1)
+                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+                min_values_pred = reshaped_pred_depth[min_indices]
+                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+                min_values_gt = reshaped_predicted_depth_gt[min_indices]
+                pred_depth_mean = np.mean(min_values_pred)
+                gt_depth_mean = np.mean(min_values_gt)
+                self.scale_factor = gt_depth_mean / pred_depth_mean
 
             # read intrinsics
             fx_frame1, fy_frame1, cx_frame1, cy_frame1 = self.get_intrinsics(frame1)
-
-            # construct points
-            # points = np.zeros((y_frame2.shape[0], 3))
-            # predicted_depth = predicted_depth[y_indices, x_indices]            
-            # points[:,2] = predicted_depth.reshape(-1,)
-            # points[:,0] = (x_indices - cx_frame1) * predicted_depth / fx_frame1
-            # points[:,1] = (y_indices - cy_frame1) * predicted_depth / fy_frame1
-            # scaled_cloud_camera_frame[key][frame1] = points
-
-
 
             points = np.zeros((y_frame1.shape[0], 3))
             y_frame1_ceil = np.ceil(y_frame1).astype(np.int32)
@@ -451,36 +412,20 @@ class PoseOptimizer():
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, frame2)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
+            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            if self.use_gt_depth == True:
+                # Load the gt depth map
+                predicted_depth = predicted_depth_gt
+            if self.scale_factor == None:
+                reshaped_pred_depth = predicted_depth.reshape(-1)
+                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+                min_values_pred = reshaped_pred_depth[min_indices]
+                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+                min_values_gt = reshaped_predicted_depth_gt[min_indices]
+                pred_depth_mean = np.mean(min_values_pred)
+                gt_depth_mean = np.mean(min_values_gt)
+                self.scale_factor = gt_depth_mean / pred_depth_mean
             fx_frame2, fy_frame2, cx_frame2, cy_frame2 = self.get_intrinsics(frame2)            
 
             # construct points
@@ -507,11 +452,7 @@ class PoseOptimizer():
         #### For Visualization ####
         ###########################
 
-        if self.dataset_type == 'Sintel':
-            depth_gt, gt_depth_file_list = self.get_gt_depth_file_list()
-
-        if self.dataset_type == 'TUM':
-            depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
+        depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
 
         # init rgb and depth file
         depth_dir = self.pred_path + '/depth_dpt_beit_large_512/depth/'
@@ -537,309 +478,22 @@ class PoseOptimizer():
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, i)
-                
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt                
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
 
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
+            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, i)
+            if self.use_gt_depth == True:
+                # Load the gt depth map
+                predicted_depth = predicted_depth_gt
+            if self.scale_factor == None:
+                reshaped_pred_depth = predicted_depth.reshape(-1)
+                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+                min_values_pred = reshaped_pred_depth[min_indices]
+                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+                min_values_gt = reshaped_predicted_depth_gt[min_indices]
+                pred_depth_mean = np.mean(min_values_pred)
+                gt_depth_mean = np.mean(min_values_gt)
+                self.scale_factor = gt_depth_mean / pred_depth_mean
 
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, i)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-                    tmp = 1
-
-            # read intrinsics
-            fx, fy, cx, cy = self.get_intrinsics(i)
-
-            # construct points
-            y, x = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
-            points = np.stack((x, y, np.ones((h, w))), axis=2)
-            points = np.reshape(points,(h*w,3))
-            predicted_depth = np.reshape(predicted_depth,(h*w,1))
-            points[:,2] = predicted_depth.reshape(-1,)
-            points[:,0] = (points[:,0] - cx) * points[:,2] / fx
-            points[:,1] = (points[:,1] - cy) * points[:,2] / fy
-
-            # save original point clouds for visualization in match_frame_pair_points function
-            rgb_file = osp.join(rgb_dir, rgb_files[i])
-            rgb_image = cv2.imread(rgb_file, cv2.IMREAD_COLOR)
-            colors = np.reshape(rgb_image, (h*w, 3))
-            colors = colors[~np.isnan(points).any(axis=1)] # remove points with NaN values
-            points_plot = points[~np.isnan(points).any(axis=1)] # remove points with NaN values
-            assert len(points_plot) == len(colors)
-            colors = colors / 255.0
-            self.original_point_cloud["frame{}".format(i)] = points_plot
-            self.original_point_cloud_rgb["frame{}".format(i)] = colors
-
-            self.depth_min.append(min(points_plot[:,2]))
-            self.depth_max.append(max(points_plot[:,2]))
-
-            if self.vis_depth_mode == True: 
-
-                print("depth of frame: ", i)
-
-                pcd = open3d.geometry.PointCloud()
-                pcd.points = open3d.utility.Vector3dVector(points_plot)
-                pcd.colors = open3d.utility.Vector3dVector(colors)
-                visualizer = open3d.visualization.Visualizer()
-                visualizer.create_window()
-                visualizer.add_geometry(pcd) 
-                axes_scale = 1
-                # visualizer.add_geometry(open3d.geometry.TriangleMesh.create_coordinate_frame(size=axes_scale, origin=[0, 0, 0]))
-                visualizer.get_render_option().point_size = 3
-                visualizer.run()
-                visualizer.destroy_window()
-
-        return scaled_cloud_camera_frame 
-
-    def get_depth_map(self, image_pair_correspondence):
-
-        # for sintel
-        if self.dataset_type == 'Sintel':
-            depth_gt, gt_depth_file_list = self.get_gt_depth_file_list()
-        
-        if self.dataset_type == 'TUM':
-            depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
-
-        # init rgb and depth file
-        depth_dir = self.pred_path + '/depth_dpt_beit_large_512/depth/'
-        predict_files = sorted(os.listdir(depth_dir))
-        rgb_dir = self.pred_path + '/color_full/'
-        rgb_files = sorted(os.listdir(rgb_dir))
-        number_files = int(len(predict_files)/2)
-        self.N = number_files
-
-        scaled_cloud_camera_frame = defaultdict()
-
-        for key, value in image_pair_correspondence.items():
-
-            scaled_cloud_camera_frame[key] = defaultdict()
-            
-            frame1, frame2 = key
-            # init indices
-            valid_indices = np.where((value[:,:,0]!=-1)&(value[:,:,1]!=-1))
-            y_indices = valid_indices[0]
-            x_indices = valid_indices[1]
-            y_frame2 = value[y_indices, x_indices, 0]
-            x_frame2 = value[y_indices, x_indices, 1]
-
-
-            #################################
-            ##### frame1 correspondences ####
-            #################################
-            # Load the depth map
-            predict_file = osp.join(depth_dir,predict_files[frame1*2+1])
-            predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
-            epsilon = 0.00001
-            predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
-            h, w = predicted_depth.shape
-            # remove points out of range in prediction
-            threshold = np.percentile(predicted_depth, self.percentile_threshold)
-            predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
-            predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
-            # sintel
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-
-            # read intrinsics
-            fx_frame1, fy_frame1, cx_frame1, cy_frame1 = self.get_intrinsics(frame1)
-
-            # construct points
-            points = np.zeros((y_frame2.shape[0], 3))
-            predicted_depth = predicted_depth[y_indices, x_indices]            
-            points[:,2] = predicted_depth.reshape(-1,)
-            points[:,0] = (x_indices - cx_frame1) * predicted_depth / fx_frame1
-            points[:,1] = (y_indices - cy_frame1) * predicted_depth / fy_frame1
-            scaled_cloud_camera_frame[key][frame1] = points
-
-            #################################
-            ##### frame2 correspondences ####
-            #################################
-            # Load the depth map
-            predict_file = osp.join(depth_dir,predict_files[frame2*2+1])
-            predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
-            epsilon = 0.00001
-            predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
-            h, w = predicted_depth.shape
-            # remove points out of range in prediction
-            threshold = np.percentile(predicted_depth, self.percentile_threshold)
-            predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
-            predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
-
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, frame2)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            fx_frame2, fy_frame2, cx_frame2, cy_frame2 = self.get_intrinsics(frame2)            
-
-            # construct points
-            points = np.zeros((y_frame2.shape[0], 3))
-            y_frame2_ceil = np.ceil(y_frame2).astype(np.int32)
-            y_frame2_floor = np.floor(y_frame2).astype(np.int32)
-            x_frame2_ceil = np.ceil(x_frame2).astype(np.int32)
-            x_frame2_floor = np.floor(x_frame2).astype(np.int32)
-            y_frame2_ceil[y_frame2_ceil == self.target_height] = self.target_height - 1
-            x_frame2_ceil[x_frame2_ceil == self.target_width] = self.target_width - 1
-            depth1 = predicted_depth[y_frame2_ceil, x_frame2_ceil]
-            depth2 = predicted_depth[y_frame2_ceil, x_frame2_floor]
-            depth3 = predicted_depth[y_frame2_floor, x_frame2_ceil]
-            depth4 = predicted_depth[y_frame2_floor, x_frame2_floor]
-            predicted_depth = (depth1+depth2+depth3+depth4)/4
-            points[:,2] = predicted_depth.reshape(-1,)
-            points[:,0] = (x_frame2 - cx_frame2) * predicted_depth / fx_frame2
-            points[:,1] = (y_frame2 - cy_frame2) * predicted_depth / fy_frame2
-
-            scaled_cloud_camera_frame[key][frame2] = points
-
-
-        ###########################
-        #### For Visualization ####
-        ###########################
-
-        if self.dataset_type == 'Sintel':
-            depth_gt, gt_depth_file_list = self.get_gt_depth_file_list()
-
-        if self.dataset_type == 'TUM':
-            depth_filelist, rgb_time_stamp, depth_time_stamp = self.get_gt_depth_file_list()
-
-        # init rgb and depth file
-        depth_dir = self.pred_path + '/depth_dpt_beit_large_512/depth/'
-        predict_files = sorted(os.listdir(depth_dir))
-        rgb_dir = self.pred_path + '/color_full/'
-        rgb_files = sorted(os.listdir(rgb_dir))
-        number_files = int(len(predict_files)/2)
-        self.original_point_cloud = {}
-        self.original_point_cloud_rgb = {}
-        self.s_gt = []
-
-        for i in range(number_files):
-
-            # Load the depth map
-            predict_file = osp.join(depth_dir,predict_files[i*2+1])
-            predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
-            epsilon = 0.00001
-            predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
-            h, w = predicted_depth.shape
-
-            # remove points out of range in prediction
-            threshold = np.percentile(predicted_depth, self.percentile_threshold)
-            predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
-            predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
-
-            if self.dataset_type == 'Sintel':
-                predicted_depth_gt = self.get_gt_depth(depth_gt, gt_depth_file_list, i)
-                
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt                
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-            if self.dataset_type == 'TUM':
-                predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, i)
-                if self.use_gt_depth == True:
-                    # Load the gt depth map
-                    predicted_depth = predicted_depth_gt
-                if self.scale_factor == None:
-                    reshaped_pred_depth = predicted_depth.reshape(-1)
-                    min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                    min_values_pred = reshaped_pred_depth[min_indices]
-                    reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                    min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                    min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                    pred_depth_mean = np.mean(min_values_pred)
-                    gt_depth_mean = np.mean(min_values_gt)
-                    self.scale_factor = gt_depth_mean / pred_depth_mean
-                    tmp = 1
 
             # read intrinsics
             fx, fy, cx, cy = self.get_intrinsics(i)
@@ -942,6 +596,193 @@ class PoseOptimizer():
         filtered_set2 = set2[filtered_distances_index]
 
         return filtered_set1, filtered_set2
+
+
+
+    def match_frame_pair_points(self, image_pair_correspondence, scaled_cloud_camera_frame):
+
+        # init param
+        self.scaled_cloud_camera_frame_dict = {}
+        x = [0]
+        y = [0]
+        z = [0]
+        for key, value in image_pair_correspondence.items():
+
+
+            ########################################
+            ################ method1 ###############
+            ########################################
+
+            # init param
+            frame1 = key[0]
+            frame2 = key[1]
+            frame1_key = 'frame{}'.format(frame1)
+            frame2_key = 'frame{}'.format(frame2)
+            scaled_cloud_camera_frame_one_pair = {}            
+
+            # init points
+            points_frame1 = scaled_cloud_camera_frame[frame1] # points in frame 1: h,w,3
+            points_frame2 = scaled_cloud_camera_frame[frame2] # points in frame 2: h,w,3
+
+            valid_indices = np.where((value[:,:,0]!=-1)&(value[:,:,1]!=-1))
+            y_indices = valid_indices[0]
+            x_indices = valid_indices[1]
+            y_frame2 = value[y_indices, x_indices, 0]
+            x_frame2 = value[y_indices, x_indices, 1]
+
+            y_diff = y_indices - y_frame2
+            x_diff = x_indices - x_frame2
+
+            y_frame2_ceil = np.ceil(y_frame2).astype(np.int32)
+            y_frame2_floor = np.floor(y_frame2).astype(np.int32)
+            x_frame2_ceil = np.ceil(x_frame2).astype(np.int32)
+            x_frame2_floor = np.floor(x_frame2).astype(np.int32)
+            y_frame2_ceil[y_frame2_ceil == self.target_height] = self.target_height - 1
+            x_frame2_ceil[x_frame2_ceil == self.target_width] = self.target_width - 1
+            point_frame1 = points_frame1[y_indices, x_indices] # point_frame1: h*w, 3
+            point_frame2_y_floor_x_floor = points_frame2[y_frame2_floor, x_frame2_floor] # points_frame2: h, w, 3
+            point_frame2_y_floor_x_ceil = points_frame2[y_frame2_floor, x_frame2_ceil] # points_frame2: h, w, 3
+            point_frame2_y_ceil_x_floor = points_frame2[y_frame2_ceil, x_frame2_floor] # points_frame2: h, w, 3
+            point_frame2_y_ceil_x_ceil = points_frame2[y_frame2_ceil, x_frame2_ceil] # points_frame2: h, w, 3
+            point_frame2 = []
+            y_floor = (point_frame2_y_floor_x_floor[:, 1] + point_frame2_y_floor_x_ceil[:, 1]) / 2
+            y_ceil = (point_frame2_y_ceil_x_floor[:, 1] + point_frame2_y_ceil_x_ceil[:, 1]) / 2
+            y_frac = y_frame2 - np.floor(y_frame2)
+            interpolated_y = y_floor + (y_ceil - y_floor) * y_frac
+            x_floor = (point_frame2_y_floor_x_floor[:, 0] + point_frame2_y_ceil_x_floor[:, 0]) / 2
+            x_ceil = (point_frame2_y_floor_x_ceil[:, 0] + point_frame2_y_ceil_x_ceil[:, 0]) / 2
+            x_frac = x_frame2 - np.floor(x_frame2)
+            interpolated_x = x_floor + (x_ceil - x_floor) * x_frac
+            y_rounded = np.round(y_frame2).astype(np.int32)
+            x_rounded = np.round(x_frame2).astype(np.int32)
+            y_rounded[y_rounded == self.target_height] = self.target_height - 1
+            x_rounded[x_rounded == self.target_width] = self.target_width - 1
+
+
+            uninterpolated_z = points_frame2[y_rounded, x_rounded, 2]
+
+            point_frame2 = np.column_stack((interpolated_x, interpolated_y, uninterpolated_z))
+
+            point_frame1, point_frame2 = self.remove_nan_pairs(point_frame1, point_frame2)
+
+            
+            # for kitti/tum
+            if self.scale_factor == None:
+                if frame1 == 0:
+                    self.set_scale_factor(point_frame1)
+                elif frame2 == 0:
+                    self.set_scale_factor(point_frame2)
+
+            # scale points to make optimization stable. Median of two sets of points are both 1 after scaling.
+            assert self.scale_factor != None 
+
+            if self.use_gt_depth == False:            
+                point_frame1, point_frame2 = self.scale_points(point_frame1, point_frame2)
+
+
+            # Not append if zero correspondence
+            if len(point_frame1) < 10:
+                print("Frame pair {} -> {} has {} correspondences. So discard this pair.".format(key[0],key[1], len(point_frame1), self.num_pairs_keep))
+                continue            
+
+            # Subsample to accelerate optimization
+            print("Frame pair {} -> {} has {} correspondences before subsampling.".format(key[0],key[1], len(point_frame1)))
+            assert len(point_frame1) == len(point_frame2)
+            point_frame1, point_frame2 = self.subsample_point_clouds(point_frame1, point_frame2, self.num_pairs_keep)            
+            print("Frame pair {} -> {} has {} correspondences.".format(key[0],key[1], len(point_frame1)))
+
+            # Append the points to the corresponding keys in the dictionary
+            scaled_cloud_camera_frame_one_pair[frame1_key] = point_frame1
+            scaled_cloud_camera_frame_one_pair[frame2_key] = point_frame2
+            self.scaled_cloud_camera_frame_dict[key] = scaled_cloud_camera_frame_one_pair
+
+
+            # visualize the motion of point clouds
+            if frame2 -frame1 == 1:
+                x_axis_mean = np.mean(point_frame2[:,0]-point_frame1[:,0])
+                y_axis_mean = np.mean(point_frame2[:,1]-point_frame1[:,1])
+                z_axis_mean = np.mean(point_frame2[:,2]-point_frame1[:,2])
+
+                x.append(x[-1] + x_axis_mean)
+                y.append(y[-1] + y_axis_mean)
+                z.append(z[-1] + z_axis_mean)
+
+            if len(x) == 40:
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                for i, (xi, yi, zi) in enumerate(zip(x, y, z)):
+                    ax.scatter(xi, yi, zi)
+                    ax.text(xi, yi, zi, str(i), color='red')
+
+                translationDistance = 1
+                ax.set_xlim(-translationDistance, translationDistance)
+                ax.set_ylim(-translationDistance, translationDistance)
+                ax.set_zlim(-translationDistance, translationDistance)
+                ax.set_xlabel('X')
+                ax.set_ylabel('Y')
+                ax.set_zlabel('Z')
+                ax.set_title('3D scatter plot for average motion of point clouds')
+                plt.grid(True)
+                ax.set_box_aspect([1, 1, 2])
+                plt.show()
+
+
+
+
+            if self.vis_final_matching_mode == True:
+
+                # get original points
+                original_point_cloud_frame1 = self.original_point_cloud["frame{}".format(frame1)] * self.scale_factor
+                original_point_cloud_frame2 = self.original_point_cloud["frame{}".format(frame2)] * self.scale_factor
+                original_point_cloud_frame2[:,1] = original_point_cloud_frame2[:,1] + self.pointCloudPairSeparateDistance
+                original_point_cloud_rgb_frame1 = self.original_point_cloud_rgb["frame{}".format(frame1)]
+                original_point_cloud_rgb_frame2 = self.original_point_cloud_rgb["frame{}".format(frame2)]
+                original_pcd1_o3d = open3d.geometry.PointCloud()
+                original_pcd2_o3d = open3d.geometry.PointCloud()
+                original_pcd1_o3d.points = open3d.utility.Vector3dVector(original_point_cloud_frame1)
+                original_pcd1_o3d.colors = open3d.utility.Vector3dVector(original_point_cloud_rgb_frame1)
+                original_pcd2_o3d.points = open3d.utility.Vector3dVector(original_point_cloud_frame2)
+                original_pcd2_o3d.colors = open3d.utility.Vector3dVector(original_point_cloud_rgb_frame2)
+
+                # Create line correspondences
+                pcd1_np = point_frame1
+                pcd2_np = point_frame2
+                pcd2_np[:,1] = pcd2_np[:,1] + self.pointCloudPairSeparateDistance # to seperate pcd1 and pcd2
+                num_points = max(len(pcd1_np), len(pcd2_np))
+                colors = np.zeros((num_points, 3))
+                colors[:, 0] = np.linspace(0, 1, num_points)  # Red channel
+                colors_o3d = open3d.utility.Vector3dVector(colors)
+                ## Create LineSet object
+                line_set = open3d.geometry.LineSet()
+                line_set.points = open3d.utility.Vector3dVector(np.concatenate((pcd1_np, pcd2_np), axis=0))
+                line_set.lines = open3d.utility.Vector2iVector(np.array([[i, i + len(pcd1_np)] for i in range(len(pcd1_np))]))
+                line_set.colors = colors_o3d
+                ## Create Open3D point cloud objects with colors
+                pcd1_o3d = open3d.geometry.PointCloud()
+                pcd1_o3d.points = open3d.utility.Vector3dVector(pcd1_np)
+                pcd1_o3d.paint_uniform_color([0, 0, 1]) ## blue
+                pcd2_o3d = open3d.geometry.PointCloud()
+                pcd2_o3d.points = open3d.utility.Vector3dVector(pcd2_np)
+                pcd2_o3d.paint_uniform_color([0, 1, 0]) ## green
+
+                # Visualize the point clouds
+                visualizer = open3d.visualization.Visualizer()
+                visualizer.create_window()
+
+                # Add the point clouds to the visualizer
+                visualizer.add_geometry(pcd1_o3d)
+                visualizer.add_geometry(pcd2_o3d)
+                visualizer.add_geometry(original_pcd1_o3d)
+                visualizer.add_geometry(original_pcd2_o3d)
+                visualizer.add_geometry(line_set)
+                axes_scale = 0.1          
+                visualizer.add_geometry(open3d.geometry.TriangleMesh.create_coordinate_frame\
+                                                                (size=axes_scale, origin=[0, 0, 0]))
+                visualizer.get_render_option().point_size = 3
+
+                # Run the visualizer
+                visualizer.run()
+                visualizer.destroy_window()
 
 
     def match_frame_pair_points(self, scaled_cloud_camera_frame):
