@@ -4,7 +4,7 @@
 
 import numpy as np
 from scipy.linalg import svd
-from utils.utils import sorteig,project2SO3
+from utils_simsync.utils import sorteig,project2SO3
 from collections import defaultdict
 import sys
 import mosek

@@ -15,7 +15,7 @@ import pickle
 import copy
 plt.rcParams['backend'] = 'TkAgg'
 
-from utils import image_io
+from utils_simsync import image_io
 
 class PoseOptimizer():
     def __init__(self, gt_path, pred_path):
