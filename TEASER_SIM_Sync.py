@@ -85,9 +85,9 @@ def TEASER_SimSync(N, edges, pointclouds, scale_gt = None, reg_lambda=1):
 
     # solution = SimSync(N, edges, pointclouds,scale_gt, Weights=weights)
     # scale_gt = np.ones((N,1))
-    solution = SimSyncReg(N, edges, pointclouds,scale_gt, Weights=weights, reg_lambda=reg_lambda)
+    # solution = SimSyncReg(N, edges, pointclouds,scale_gt, Weights=weights, reg_lambda=reg_lambda)
 
-    # solution = SimSyncReg_mosek9(N, edges, pointclouds,scale_gt, Weights=weights, reg_lambda=reg_lambda)
+    solution = SimSyncReg_mosek9(N, edges, pointclouds,scale_gt, Weights=weights, reg_lambda=reg_lambda)
 
 
     return solution, weights

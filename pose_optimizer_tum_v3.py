@@ -26,83 +26,83 @@ from collections import defaultdict
 
 # midas #
 
-# import os
-# import glob
-# import torch
-# import utils
-# import cv2
-# import argparse
-# import time
+import os
+import glob
+import torch
+import utils
+import cv2
+import argparse
+import time
 
-# import numpy as np
+import numpy as np
 
-# from imutils.video import VideoStream
-# from midas.model_loader import default_models, load_model
+from imutils.video import VideoStream
+from midas.model_loader import default_models, load_model
 
 
 #######################
 #### with keyframe ####
 #######################
 
-# first_execution = True
-# def process(device, model, model_type, image, input_size, target_size, optimize, use_camera):
-#     """
-#     Run the inference and interpolate.
+first_execution = True
+def process(device, model, model_type, image, input_size, target_size, optimize, use_camera):
+    """
+    Run the inference and interpolate.
 
-#     Args:
-#         device (torch.device): the torch device used
-#         model: the model used for inference
-#         model_type: the type of the model
-#         image: the image fed into the neural network
-#         input_size: the size (width, height) of the neural network input (for OpenVINO)
-#         target_size: the size (width, height) the neural network output is interpolated to
-#         optimize: optimize the model to half-floats on CUDA?
-#         use_camera: is the camera used?
+    Args:
+        device (torch.device): the torch device used
+        model: the model used for inference
+        model_type: the type of the model
+        image: the image fed into the neural network
+        input_size: the size (width, height) of the neural network input (for OpenVINO)
+        target_size: the size (width, height) the neural network output is interpolated to
+        optimize: optimize the model to half-floats on CUDA?
+        use_camera: is the camera used?
 
-#     Returns:
-#         the prediction
-#     """
-#     global first_execution
+    Returns:
+        the prediction
+    """
+    global first_execution
 
-#     if "openvino" in model_type:
-#         if first_execution or not use_camera:
-#             print(f"    Input resized to {input_size[0]}x{input_size[1]} before entering the encoder")
-#             first_execution = False
+    if "openvino" in model_type:
+        if first_execution or not use_camera:
+            print(f"    Input resized to {input_size[0]}x{input_size[1]} before entering the encoder")
+            first_execution = False
 
-#         sample = [np.reshape(image, (1, 3, *input_size))]
-#         prediction = model(sample)[model.output(0)][0]
-#         prediction = cv2.resize(prediction, dsize=target_size,
-#                                 interpolation=cv2.INTER_CUBIC)
-#     else:
-#         sample = torch.from_numpy(image).to(device).unsqueeze(0)
+        sample = [np.reshape(image, (1, 3, *input_size))]
+        prediction = model(sample)[model.output(0)][0]
+        prediction = cv2.resize(prediction, dsize=target_size,
+                                interpolation=cv2.INTER_CUBIC)
+    else:
+        sample = torch.from_numpy(image).to(device).unsqueeze(0)
 
-#         if optimize and device == torch.device("cuda"):
-#             if first_execution:
-#                 print("  Optimization to half-floats activated. Use with caution, because models like Swin require\n"
-#                     "  float precision to work properly and may yield non-finite depth values to some extent for\n"
-#                     "  half-floats.")
-#             sample = sample.to(memory_format=torch.channels_last)
-#             sample = sample.half()
+        if optimize and device == torch.device("cuda"):
+            if first_execution:
+                print("  Optimization to half-floats activated. Use with caution, because models like Swin require\n"
+                    "  float precision to work properly and may yield non-finite depth values to some extent for\n"
+                    "  half-floats.")
+            sample = sample.to(memory_format=torch.channels_last)
+            sample = sample.half()
 
-#         if first_execution or not use_camera:
-#             height, width = sample.shape[2:]
-#             print(f"    Input resized to {width}x{height} before entering the encoder")
-#             first_execution = False
+        if first_execution or not use_camera:
+            height, width = sample.shape[2:]
+            print(f"    Input resized to {width}x{height} before entering the encoder")
+            first_execution = False
 
-#         prediction = model.forward(sample)
-#         prediction = (
-#             torch.nn.functional.interpolate(
-#                 prediction.unsqueeze(1),
-#                 size=target_size[::-1],
-#                 mode="bicubic",
-#                 align_corners=False,
-#             )
-#             .squeeze()
-#             .cpu()
-#             .numpy()
-#         )
+        prediction = model.forward(sample)
+        prediction = (
+            torch.nn.functional.interpolate(
+                prediction.unsqueeze(1),
+                size=target_size[::-1],
+                mode="bicubic",
+                align_corners=False,
+            )
+            .squeeze()
+            .cpu()
+            .numpy()
+        )
 
-#     return prediction
+    return prediction
 
 
 
@@ -556,7 +556,11 @@ class PoseOptimizerTUM(PoseOptimizer):
                 # ctr.set_lookat([position[0]+1, position[1]+0.3, position[2]+7])
                 # xyz 2
                 # ctr.set_lookat([position[0]-1, position[1], position[2]+106])
-                ctr.set_lookat([position[0], position[1], position[2]+488])
+
+
+                # ctr.set_lookat([position[0], position[1], position[2]+488]) # original
+
+                ctr.set_lookat([position[0], position[1], position[2]+470]) # finetune version
 
             else:
                 # if frame > 0: 
@@ -887,20 +891,20 @@ class PoseOptimizerTUM(PoseOptimizer):
 
     def get_depth_map_CAPS_MiDaS(self, image_pair_correspondence):
         
-        # # midas param start #
-        # input_path = 'input'
-        # model_path = 'weights/dpt_beit_large_512.pt'
-        # model_type = 'dpt_beit_large_512'
-        # optimize = False
-        # output_path = 'output'
-        # height = None
-        # square = 'False'
-        # side = False
-        # grayscale = False
-        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # print("Device: %s" % device)
-        # model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
-        # # midas param end #
+        # midas param start #
+        input_path = 'input'
+        model_path = 'weights/dpt_beit_large_512.pt'
+        model_type = 'dpt_beit_large_512'
+        optimize = False
+        output_path = 'output'
+        height = None
+        square = 'False'
+        side = False
+        grayscale = False
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("Device: %s" % device)
+        model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
+        # midas param end #
 
 
 
@@ -933,34 +937,34 @@ class PoseOptimizerTUM(PoseOptimizer):
             #######################
             # Load the depth map ##
             #######################
-            predict_file = osp.join(depth_dir,predict_files[frame1*2+1])
-            predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
+            # predict_file = osp.join(depth_dir,predict_files[frame1*2+1])
+            # predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
 
             ##########################
             # predict the depth map ##
             ##########################
-            # rgb_file_input = osp.join(rgb_dir,rgb_files[frame1])
-            # if input_path is not None:
-            #     if output_path is None:
-            #         print("Warning: No output path specified. Images will be processed but not shown or stored anywhere.")
+            rgb_file_input = osp.join(rgb_dir,rgb_files[frame1])
+            if input_path is not None:
+                if output_path is None:
+                    print("Warning: No output path specified. Images will be processed but not shown or stored anywhere.")
 
 
-            #     # input
-            #     original_image_rgb = utils.read_image(rgb_file_input)  # in [0, 1]
-            #     image = transform({"image": original_image_rgb})["image"]
+                # input
+                original_image_rgb = utils.read_image(rgb_file_input)  # in [0, 1]
+                image = transform({"image": original_image_rgb})["image"]
 
-            #     # compute
-            #     with torch.no_grad():
-            #         prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
-            #                             optimize, False)
-            #     # output
-            #     if output_path is not None:
-            #         filename = os.path.join(
-            #             output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
-            #         )
-            #         utils.write_depth(filename, prediction, grayscale, bits=2)
-            #         utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
-            #     predicted_depth_inverse = prediction
+                # compute
+                with torch.no_grad():
+                    prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
+                                        optimize, False)
+                # output
+                if output_path is not None:
+                    filename = os.path.join(
+                        output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
+                    )
+                    utils.write_depth(filename, prediction, grayscale, bits=2)
+                    utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
+                predicted_depth_inverse = prediction
 
 
             epsilon = 0.00001
@@ -1011,33 +1015,33 @@ class PoseOptimizerTUM(PoseOptimizer):
             ##### frame2 correspondences ####
             #################################
             # Load the depth map
-            predict_file = osp.join(depth_dir,predict_files[frame2*2+1])
-            predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
+            # predict_file = osp.join(depth_dir,predict_files[frame2*2+1])
+            # predicted_depth_inverse = image_io.load_raw_float32_image(predict_file)
 
 
             # predict the depth map
-            # rgb_file_input = osp.join(rgb_dir,rgb_files[frame2])
-            # if input_path is not None:
-            #     if output_path is None:
-            #         print("Warning: No output path specified. Images will be processed but not shown or stored anywhere.")
+            rgb_file_input = osp.join(rgb_dir,rgb_files[frame2])
+            if input_path is not None:
+                if output_path is None:
+                    print("Warning: No output path specified. Images will be processed but not shown or stored anywhere.")
 
 
-            #     # input
-            #     original_image_rgb = utils.read_image(rgb_file_input)  # in [0, 1]
-            #     image = transform({"image": original_image_rgb})["image"]
+                # input
+                original_image_rgb = utils.read_image(rgb_file_input)  # in [0, 1]
+                image = transform({"image": original_image_rgb})["image"]
 
-            #     # compute
-            #     with torch.no_grad():
-            #         prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
-            #                             optimize, False)
-            #     # output
-            #     if output_path is not None:
-            #         filename = os.path.join(
-            #             output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
-            #         )
-            #         utils.write_depth(filename, prediction, grayscale, bits=2)
-            #         utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
-            #     predicted_depth_inverse = prediction
+                # compute
+                with torch.no_grad():
+                    prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
+                                        optimize, False)
+                # output
+                if output_path is not None:
+                    filename = os.path.join(
+                        output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
+                    )
+                    utils.write_depth(filename, prediction, grayscale, bits=2)
+                    utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
+                predicted_depth_inverse = prediction
 
 
 
@@ -1335,8 +1339,10 @@ if __name__ == "__main__":
         # Save the defaultdict to a file
         with open('solution.pkl', 'wb') as file:
             pickle.dump(solution, file)
+
         print("Visualize camera trajectory:")
         # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+
         stats = pose_optimizer.printErr(solution)
         # Save the defaultdict to a file
         with open('solution.pkl', 'wb') as file:
