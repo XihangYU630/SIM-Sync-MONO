@@ -977,20 +977,20 @@ class PoseOptimizerTUM(PoseOptimizer):
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-            if self.use_gt_depth == True:
-                # Load the gt depth map
-                predicted_depth = predicted_depth_gt
-            if self.scale_factor == None:
-                reshaped_pred_depth = predicted_depth.reshape(-1)
-                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                min_values_pred = reshaped_pred_depth[min_indices]
-                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                pred_depth_mean = np.mean(min_values_pred)
-                gt_depth_mean = np.mean(min_values_gt)
-                self.scale_factor = gt_depth_mean / pred_depth_mean
+            # predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            # if self.use_gt_depth == True:
+            #     # Load the gt depth map
+            #     predicted_depth = predicted_depth_gt
+            # if self.scale_factor == None:
+            #     reshaped_pred_depth = predicted_depth.reshape(-1)
+            #     min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+            #     min_values_pred = reshaped_pred_depth[min_indices]
+            #     reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+            #     min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+            #     min_values_gt = reshaped_predicted_depth_gt[min_indices]
+            #     pred_depth_mean = np.mean(min_values_pred)
+            #     gt_depth_mean = np.mean(min_values_gt)
+            #     self.scale_factor = gt_depth_mean / pred_depth_mean
 
             # read intrinsics
             fx_frame1, fy_frame1, cx_frame1, cy_frame1 = self.get_intrinsics(frame1)
@@ -1055,20 +1055,21 @@ class PoseOptimizerTUM(PoseOptimizer):
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
-            if self.use_gt_depth == True:
-                # Load the gt depth map
-                predicted_depth = predicted_depth_gt
-            if self.scale_factor == None:
-                reshaped_pred_depth = predicted_depth.reshape(-1)
-                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-                min_values_pred = reshaped_pred_depth[min_indices]
-                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-                min_values_gt = reshaped_predicted_depth_gt[min_indices]
-                pred_depth_mean = np.mean(min_values_pred)
-                gt_depth_mean = np.mean(min_values_gt)
-                self.scale_factor = gt_depth_mean / pred_depth_mean
+            # predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            # if self.use_gt_depth == True:
+            #     # Load the gt depth map
+            #     predicted_depth = predicted_depth_gt
+            # if self.scale_factor == None:
+            #     reshaped_pred_depth = predicted_depth.reshape(-1)
+            #     min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+            #     min_values_pred = reshaped_pred_depth[min_indices]
+            #     reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+            #     min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+            #     min_values_gt = reshaped_predicted_depth_gt[min_indices]
+            #     pred_depth_mean = np.mean(min_values_pred)
+            #     gt_depth_mean = np.mean(min_values_gt)
+            #     self.scale_factor = gt_depth_mean / pred_depth_mean
+
             fx_frame2, fy_frame2, cx_frame2, cy_frame2 = self.get_intrinsics(frame2)            
 
             # construct points
@@ -1266,29 +1267,29 @@ if __name__ == "__main__":
         solution['s_est'] = interpolated_scales
 
         ## comment start ##
-        # print("Get ground truth trajectory:")
-        # pose_optimizer.get_gt_traj()
-        # # Save the defaultdict to a file
-        # with open('solution.pkl', 'wb') as file:
-        #     pickle.dump(solution, file)
+        print("Get ground truth trajectory:")
+        pose_optimizer.get_gt_traj()
+        # Save the defaultdict to a file
+        with open('solution.pkl', 'wb') as file:
+            pickle.dump(solution, file)
 
-        # print("Visualize camera trajectory:")
-        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        print("Visualize camera trajectory:")
+        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        # stats = pose_optimizer.printErr(solution)
-        # # Save the defaultdict to a file
-        # with open('solution.pkl', 'wb') as file:
-        #     pickle.dump(solution, file)
-        # print("Visualize camera trajectory:")
-        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        stats = pose_optimizer.printErr(solution)
+        # Save the defaultdict to a file
+        with open('solution.pkl', 'wb') as file:
+            pickle.dump(solution, file)
+        print("Visualize camera trajectory:")
+        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        # avg_R_err.append(stats['avg_R_err'])
-        # avg_t_err.append(stats['avg_t_err'])
-        # RPE_T.append(stats['RPE-T'])
-        # RPE_R.append(stats['RPE-R'])
-        # subopt.append(solution['relDualityGap'])
+        avg_R_err.append(stats['avg_R_err'])
+        avg_t_err.append(stats['avg_t_err'])
+        RPE_T.append(stats['RPE-T'])
+        RPE_R.append(stats['RPE-R'])
+        subopt.append(solution['relDualityGap'])
 
-        # pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
+        pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
         ## comment end ##
 
 

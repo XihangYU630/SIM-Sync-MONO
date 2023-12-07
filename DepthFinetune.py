@@ -14,6 +14,7 @@ import numpy as np
 
 from imutils.video import VideoStream
 from midas.model_loader import default_models, load_model
+from collections import defaultdict
 
 first_execution = True
 def process(device, model, model_type, image, input_size, target_size, optimize, use_camera):
@@ -76,6 +77,38 @@ def process(device, model, model_type, image, input_size, target_size, optimize,
     return prediction
 
 
+def remove_nan_pairs(point_cloud_1, point_cloud_2):
+    # Find indices of NaN values in either point cloud
+    nan_indices_1 = np.isnan(point_cloud_1).any(axis=1)
+    nan_indices_2 = np.isnan(point_cloud_2).any(axis=1)
+    
+    # Find indices of pairs to be removed
+    remove_indices = np.logical_or(nan_indices_1, nan_indices_2)
+    
+    # Remove pairs from both point clouds
+    filtered_point_cloud_1 = point_cloud_1[~remove_indices]
+    filtered_point_cloud_2 = point_cloud_2[~remove_indices]
+
+    return filtered_point_cloud_1, filtered_point_cloud_2
+
+def get_intrinsics(sequence_name = 'freiburg2_xyz'):
+    if sequence_name == 'freiburg1_xyz' \
+        or sequence_name == 'freiburg1_rpy'\
+        or sequence_name == 'freiburg1_teddy'\
+        or sequence_name == 'freiburg1_floor':
+        # camera intrinsics
+        fx = 517.3  # focal length x
+        fy = 516.5  # focal length y
+        cx = 318.6  # optical center x
+        cy = 255.3  # optical center y
+    elif sequence_name == 'freiburg2_xyz':
+        # camera intrinsics
+        fx = 520.9  # focal length x
+        fy = 521.0  # focal length y
+        cx = 325.1  # optical center x
+        cy = 249.7  # optical center y
+    return fx, fy, cx, cy
+
 def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence):
 
     # midas param start #
@@ -102,14 +135,18 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
     number_files = int(len(predict_files)/2)
     N = number_files
 
-
+    scaled_cloud_camera_frame = defaultdict()
     for key, value in image_pair_correspondence.items():
-
+        scaled_cloud_camera_frame[key] = defaultdict()
         frame1, frame2 = key
         x_frame1 = value[:, 0]
         y_frame1 = value[:, 1]
         x_frame2 = value[:, 2]
         y_frame2 = value[:, 3]
+
+
+        ######### first frame ###########
+        # predict the depth map
         rgb_file_input = osp.join(rgb_dir,rgb_files[frame1])
         if input_path is not None:
             if output_path is None:
@@ -131,9 +168,52 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
                 )
                 utils.write_depth(filename, prediction, grayscale, bits=2)
                 utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
+            
+            predicted_depth_inverse = prediction
+
+
+        epsilon = 0.00001
+        percentile_threshold = 90
+        predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
+        h, w = predicted_depth.shape
+        # remove points out of range in prediction
+        threshold = np.percentile(predicted_depth, percentile_threshold)
+        predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
+        predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
+
+
+        # read intrinsics
+        fx_frame1, fy_frame1, cx_frame1, cy_frame1 = get_intrinsics(sequence_name='freiburg2_xyz')
+        target_width, target_height = 640,480
+
+        points = np.zeros((y_frame1.shape[0], 3))
+        y_frame1_ceil = np.ceil(y_frame1).astype(np.int32)
+        y_frame1_floor = np.floor(y_frame1).astype(np.int32)
+        x_frame1_ceil = np.ceil(x_frame1).astype(np.int32)
+        x_frame1_floor = np.floor(x_frame1).astype(np.int32)
+        y_frame1_ceil[y_frame1_ceil == target_height] = target_height - 1
+        x_frame1_ceil[x_frame1_ceil == target_width] = target_width - 1
+        depth1 = predicted_depth[y_frame1_ceil, x_frame1_ceil]
+        depth2 = predicted_depth[y_frame1_ceil, x_frame1_floor]
+        depth3 = predicted_depth[y_frame1_floor, x_frame1_ceil]
+        depth4 = predicted_depth[y_frame1_floor, x_frame1_floor]
+        predicted_depth = (depth1+depth2+depth3+depth4)/4
+        points[:,2] = predicted_depth.reshape(-1,)
+        points[:,0] = (x_frame1 - cx_frame1) * predicted_depth / fx_frame1
+        points[:,1] = (y_frame1 - cy_frame1) * predicted_depth / fy_frame1
+
+        scaled_cloud_camera_frame[key][frame1] = points
 
 
 
+
+
+
+
+
+
+
+        ######### second frame ###########
         # predict the depth map
         rgb_file_input = osp.join(rgb_dir,rgb_files[frame2])
         if input_path is not None:
@@ -156,4 +236,50 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
                 )
                 utils.write_depth(filename, prediction, grayscale, bits=2)
                 utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
-            predicted_depth_inverse = prediction
+
+
+
+
+        epsilon = 0.00001
+        predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
+        h, w = predicted_depth.shape
+        # remove points out of range in prediction
+        threshold = np.percentile(predicted_depth, percentile_threshold)
+        predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
+        predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
+
+        fx_frame2, fy_frame2, cx_frame2, cy_frame2 = get_intrinsics('freiburg2_xyz')            
+
+        # construct points
+        points = np.zeros((y_frame2.shape[0], 3))
+        y_frame2_ceil = np.ceil(y_frame2).astype(np.int32)
+        y_frame2_floor = np.floor(y_frame2).astype(np.int32)
+        x_frame2_ceil = np.ceil(x_frame2).astype(np.int32)
+        x_frame2_floor = np.floor(x_frame2).astype(np.int32)
+        y_frame2_ceil[y_frame2_ceil == target_height] = target_height - 1
+        x_frame2_ceil[x_frame2_ceil == target_width] = target_width - 1
+        depth1 = predicted_depth[y_frame2_ceil, x_frame2_ceil]
+        depth2 = predicted_depth[y_frame2_ceil, x_frame2_floor]
+        depth3 = predicted_depth[y_frame2_floor, x_frame2_ceil]
+        depth4 = predicted_depth[y_frame2_floor, x_frame2_floor]
+        predicted_depth = (depth1+depth2+depth3+depth4)/4
+        points[:,2] = predicted_depth.reshape(-1,)
+        points[:,0] = (x_frame2 - cx_frame2) * predicted_depth / fx_frame2
+        points[:,1] = (y_frame2 - cy_frame2) * predicted_depth / fy_frame2
+
+        scaled_cloud_camera_frame[key][frame2] = points
+
+
+
+
+    for key, value in scaled_cloud_camera_frame.items():
+
+        frame1, frame2 = key
+        point_frame1 = scaled_cloud_camera_frame[key][frame1]
+        point_frame2 = scaled_cloud_camera_frame[key][frame2]
+
+        point_frame1, point_frame2 = remove_nan_pairs(point_frame1, point_frame2)
+        scaled_cloud_camera_frame[key][frame1] = point_frame1
+        scaled_cloud_camera_frame[key][frame2] = point_frame2
+
+    tmp = 1
