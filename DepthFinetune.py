@@ -16,6 +16,9 @@ import numpy as np
 from imutils.video import VideoStream
 from midas.model_loader import default_models, load_model
 from collections import defaultdict
+from TEASER_SIM_Sync import TEASER_SimSync
+import torch
+import torch.optim as optim
 
 first_execution = True
 def process(device, model, model_type, image, input_size, target_size, optimize, use_camera):
@@ -71,26 +74,42 @@ def process(device, model, model_type, image, input_size, target_size, optimize,
                 align_corners=False,
             )
             .squeeze()
-            .cpu()
-            .numpy()
         )
 
     return prediction
 
 
+# def remove_nan_pairs(point_cloud_1, point_cloud_2):
+#     # Find indices of NaN values in either point cloud
+#     nan_indices_1 = np.isnan(point_cloud_1).any(axis=1)
+#     nan_indices_2 = np.isnan(point_cloud_2).any(axis=1)
+    
+#     # Find indices of pairs to be removed
+#     remove_indices = np.logical_or(nan_indices_1, nan_indices_2)
+    
+#     # Remove pairs from both point clouds
+#     filtered_point_cloud_1 = point_cloud_1[~remove_indices]
+#     filtered_point_cloud_2 = point_cloud_2[~remove_indices]
+
+#     return filtered_point_cloud_1, filtered_point_cloud_2
+
+
 def remove_nan_pairs(point_cloud_1, point_cloud_2):
+    # Assuming point_cloud_1 and point_cloud_2 are PyTorch tensors
+
     # Find indices of NaN values in either point cloud
-    nan_indices_1 = np.isnan(point_cloud_1).any(axis=1)
-    nan_indices_2 = np.isnan(point_cloud_2).any(axis=1)
-    
+    nan_indices_1 = torch.isnan(point_cloud_1).any(dim=1)
+    nan_indices_2 = torch.isnan(point_cloud_2).any(dim=1)
+
     # Find indices of pairs to be removed
-    remove_indices = np.logical_or(nan_indices_1, nan_indices_2)
-    
+    remove_indices = nan_indices_1 | nan_indices_2  # Logical OR operation
+
     # Remove pairs from both point clouds
     filtered_point_cloud_1 = point_cloud_1[~remove_indices]
     filtered_point_cloud_2 = point_cloud_2[~remove_indices]
 
     return filtered_point_cloud_1, filtered_point_cloud_2
+
 
 def scale_points(point_frame1, point_frame2, scale_factor):
 
@@ -118,7 +137,7 @@ def get_intrinsics(sequence_name = 'freiburg2_xyz'):
         cy = 249.7  # optical center y
     return fx, fy, cx, cy
 
-def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence, scale_factor):
+def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence, scale_factor, EssentialMap):
 
     # midas param start #
     input_path = 'input'
@@ -133,6 +152,19 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: %s" % device)
     model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
+
+    for param in model.parameters():
+        param.requires_grad = False
+    # Unfreeze the last N layers
+    num_layers = 1  # Change N to the number of layers you want to unfreeze
+    for module in list(model.children())[-num_layers:]:
+        for param in module.parameters():
+            param.requires_grad = True
+
+    # Continue with optimizer and training
+    model.train()
+    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
+    torch.cuda.empty_cache()
     # midas param end #
 
 
@@ -166,16 +198,16 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
             image = transform({"image": original_image_rgb})["image"]
 
             # compute
-            with torch.no_grad():
-                prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
-                                    optimize, False)
+            # with torch.no_grad():
+            prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
+                                optimize, False)
             # output
-            if output_path is not None:
-                filename = os.path.join(
-                    output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
-                )
-                utils.write_depth(filename, prediction, grayscale, bits=2)
-                utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
+            # if output_path is not None:
+            #     filename = os.path.join(
+            #         output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
+            #     )
+                # utils.write_depth(filename, prediction, grayscale, bits=2)
+                # utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
             
             predicted_depth_inverse = prediction
 
@@ -184,42 +216,53 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
         percentile_threshold = 90
         predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
         h, w = predicted_depth.shape
+        def torch_percentile(input_tensor, percentile):
+            k = 1 + round(.01 * float(percentile) * (input_tensor.numel() - 1))
+            return input_tensor.view(-1).kthvalue(int(k)).values.item()
         # remove points out of range in prediction
-        threshold = np.percentile(predicted_depth, percentile_threshold)
-        predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
-        predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
+        threshold = torch_percentile(predicted_depth, percentile_threshold)
+        predicted_depth = torch.where(predicted_depth > threshold, torch.tensor(float('nan')).to(predicted_depth.device), predicted_depth)
+        predicted_depth = torch.where(predicted_depth <= 0, torch.tensor(float('nan')).to(predicted_depth.device), predicted_depth)
+
 
 
         # read intrinsics
         fx_frame1, fy_frame1, cx_frame1, cy_frame1 = get_intrinsics(sequence_name='freiburg2_xyz')
         target_width, target_height = 640,480
 
-        points = np.zeros((y_frame1.shape[0], 3))
-        y_frame1_ceil = np.ceil(y_frame1).astype(np.int32)
-        y_frame1_floor = np.floor(y_frame1).astype(np.int32)
-        x_frame1_ceil = np.ceil(x_frame1).astype(np.int32)
-        x_frame1_floor = np.floor(x_frame1).astype(np.int32)
-        y_frame1_ceil[y_frame1_ceil == target_height] = target_height - 1
-        x_frame1_ceil[x_frame1_ceil == target_width] = target_width - 1
-        depth1 = predicted_depth[y_frame1_ceil, x_frame1_ceil]
-        depth2 = predicted_depth[y_frame1_ceil, x_frame1_floor]
-        depth3 = predicted_depth[y_frame1_floor, x_frame1_ceil]
-        depth4 = predicted_depth[y_frame1_floor, x_frame1_floor]
-        predicted_depth = (depth1+depth2+depth3+depth4)/4
-        points[:,2] = predicted_depth.reshape(-1,)
-        points[:,0] = (x_frame1 - cx_frame1) * predicted_depth / fx_frame1
-        points[:,1] = (y_frame1 - cy_frame1) * predicted_depth / fy_frame1
+        points = torch.zeros((y_frame1.shape[0], 3))
+        # Convert numpy arrays to PyTorch tensors
+        y_frame1_tensor = torch.from_numpy(y_frame1).to(predicted_depth.device)
+        x_frame1_tensor = torch.from_numpy(x_frame1).to(predicted_depth.device)
+
+        # Assuming target_height and target_width are scalar values, convert them to tensors
+        target_height_tensor = torch.tensor(target_height, device=predicted_depth.device)
+        target_width_tensor = torch.tensor(target_width, device=predicted_depth.device)
+
+        # Calculate ceil and floor values
+        y_frame1_ceil = torch.ceil(y_frame1_tensor).to(torch.int64)
+        y_frame1_floor = torch.floor(y_frame1_tensor).to(torch.int64)
+        x_frame1_ceil = torch.ceil(x_frame1_tensor).to(torch.int64)
+        x_frame1_floor = torch.floor(x_frame1_tensor).to(torch.int64)
+
+        # Adjust the values at the boundaries
+        y_frame1_ceil = torch.where(y_frame1_ceil == target_height_tensor, target_height_tensor - 1, y_frame1_ceil)
+        x_frame1_ceil = torch.where(x_frame1_ceil == target_width_tensor, target_width_tensor - 1, x_frame1_ceil)
+
+        # Perform depth calculations
+        depth1 = predicted_depth[y_frame1_ceil.long(), x_frame1_ceil.long()]
+        depth2 = predicted_depth[y_frame1_ceil.long(), x_frame1_floor.long()]
+        depth3 = predicted_depth[y_frame1_floor.long(), x_frame1_ceil.long()]
+        depth4 = predicted_depth[y_frame1_floor.long(), x_frame1_floor.long()]
+        predicted_depth = (depth1 + depth2 + depth3 + depth4) / 4
+
+        # Update points tensor
+        # Ensure points is a PyTorch tensor and on the same device as predicted_depth
+        points[:, 2] = predicted_depth.view(-1)
+        points[:, 0] = (x_frame1_tensor - cx_frame1) * predicted_depth / fx_frame1
+        points[:, 1] = (y_frame1_tensor - cy_frame1) * predicted_depth / fy_frame1
 
         scaled_cloud_camera_frame[key][frame1] = points
-
-
-
-
-
-
-
-
-
 
         ######### second frame ###########
         # predict the depth map
@@ -228,52 +271,66 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
             if output_path is None:
                 print("Warning: No output path specified. Images will be processed but not shown or stored anywhere.")
 
-
             # input
             original_image_rgb = utils.read_image(rgb_file_input)  # in [0, 1]
             image = transform({"image": original_image_rgb})["image"]
 
             # compute
-            with torch.no_grad():
-                prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
-                                    optimize, False)
+            # with torch.no_grad():
+            prediction = process(device, model, model_type, image, (net_w, net_h), original_image_rgb.shape[1::-1],
+                                optimize, False)
             # output
-            if output_path is not None:
-                filename = os.path.join(
-                    output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
-                )
-                utils.write_depth(filename, prediction, grayscale, bits=2)
-                utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
-
-
+            # if output_path is not None:
+            #     filename = os.path.join(
+            #         output_path, os.path.splitext(os.path.basename(rgb_file_input))[0] + '-' + model_type
+            #     )
+            #     utils.write_depth(filename, prediction, grayscale, bits=2)
+            #     utils.write_pfm(filename + ".pfm", prediction.astype(np.float32))
+            predicted_depth_inverse = prediction
 
 
         epsilon = 0.00001
         predicted_depth = 1.0 / (epsilon + predicted_depth_inverse)  # left predicted_depth is depth in real
         h, w = predicted_depth.shape
         # remove points out of range in prediction
-        threshold = np.percentile(predicted_depth, percentile_threshold)
-        predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
-        predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
+        threshold = torch_percentile(predicted_depth, percentile_threshold)
+        predicted_depth = torch.where(predicted_depth > threshold, torch.tensor(float('nan')).to(predicted_depth.device), predicted_depth)
+        predicted_depth = torch.where(predicted_depth <= 0, torch.tensor(float('nan')).to(predicted_depth.device), predicted_depth)
 
         fx_frame2, fy_frame2, cx_frame2, cy_frame2 = get_intrinsics('freiburg2_xyz')            
 
         # construct points
-        points = np.zeros((y_frame2.shape[0], 3))
-        y_frame2_ceil = np.ceil(y_frame2).astype(np.int32)
-        y_frame2_floor = np.floor(y_frame2).astype(np.int32)
-        x_frame2_ceil = np.ceil(x_frame2).astype(np.int32)
-        x_frame2_floor = np.floor(x_frame2).astype(np.int32)
-        y_frame2_ceil[y_frame2_ceil == target_height] = target_height - 1
-        x_frame2_ceil[x_frame2_ceil == target_width] = target_width - 1
-        depth1 = predicted_depth[y_frame2_ceil, x_frame2_ceil]
-        depth2 = predicted_depth[y_frame2_ceil, x_frame2_floor]
-        depth3 = predicted_depth[y_frame2_floor, x_frame2_ceil]
-        depth4 = predicted_depth[y_frame2_floor, x_frame2_floor]
-        predicted_depth = (depth1+depth2+depth3+depth4)/4
-        points[:,2] = predicted_depth.reshape(-1,)
-        points[:,0] = (x_frame2 - cx_frame2) * predicted_depth / fx_frame2
-        points[:,1] = (y_frame2 - cy_frame2) * predicted_depth / fy_frame2
+        points = torch.zeros((y_frame2.shape[0], 3))
+        # Convert numpy arrays to PyTorch tensors
+        y_frame2_tensor = torch.from_numpy(y_frame2).to(predicted_depth.device)
+        x_frame2_tensor = torch.from_numpy(x_frame2).to(predicted_depth.device)
+
+        # Assuming target_height and target_width are scalar values, convert them to tensors
+        target_height_tensor = torch.tensor(target_height, device=predicted_depth.device)
+        target_width_tensor = torch.tensor(target_width, device=predicted_depth.device)
+
+        # Calculate ceil and floor values
+        y_frame2_ceil = torch.ceil(y_frame2_tensor).to(torch.int64)
+        y_frame2_floor = torch.floor(y_frame2_tensor).to(torch.int64)
+        x_frame2_ceil = torch.ceil(x_frame2_tensor).to(torch.int64)
+        x_frame2_floor = torch.floor(x_frame2_tensor).to(torch.int64)
+
+        # Adjust the values at the boundaries
+        y_frame2_ceil = torch.where(y_frame2_ceil == target_height_tensor, target_height_tensor - 1, y_frame2_ceil)
+        x_frame2_ceil = torch.where(x_frame2_ceil == target_width_tensor, target_width_tensor - 1, x_frame2_ceil)
+
+        # Perform depth calculations
+        depth1 = predicted_depth[y_frame2_ceil.long(), x_frame2_ceil.long()]
+        depth2 = predicted_depth[y_frame2_ceil.long(), x_frame2_floor.long()]
+        depth3 = predicted_depth[y_frame2_floor.long(), x_frame2_ceil.long()]
+        depth4 = predicted_depth[y_frame2_floor.long(), x_frame2_floor.long()]
+        predicted_depth = (depth1 + depth2 + depth3 + depth4) / 4
+
+        # Update points tensor
+        # Ensure points is a PyTorch tensor and on the same device as predicted_depth
+        points[:, 2] = predicted_depth.view(-1)
+        points[:, 0] = (x_frame2_tensor - cx_frame2) * predicted_depth / fx_frame2
+        points[:, 1] = (y_frame2_tensor - cy_frame2) * predicted_depth / fy_frame2
 
         scaled_cloud_camera_frame[key][frame2] = points
 
@@ -289,7 +346,6 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
         point_frame1, point_frame2 = scale_points(point_frame1, point_frame2, scale_factor)
         scaled_cloud_camera_frame[key][frame1] = point_frame1
         scaled_cloud_camera_frame[key][frame2] = point_frame2
-    tmp = 1
 
 
     translations = []
@@ -301,15 +357,41 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
         rotations.append(pose['R_est'][3*i:3*(i+1), :])
         scales.append(pose['s_est'][i])
     
-    translations = np.array(translations)
-    rotations = np.array(rotations)
-    scales = np.array(scales)
+    translations = torch.tensor(translations)
+    rotations = torch.tensor(rotations)
+    scales = torch.tensor(scales)
+
+
+
+
+
+    edges = list(scaled_cloud_camera_frame.keys())
+    for j in range(len(edges)):
+        for i in range(N):
+            if edges[j][0] == EssentialMap[i]:
+                edges[j] = (i,edges[j][1])
+            if edges[j][1] == EssentialMap[i]:
+                edges[j] = (edges[j][0],i) 
+    pointclouds = list(scaled_cloud_camera_frame.values())
+    pointclouds = []
+    for pointclouds_pair in list(scaled_cloud_camera_frame.values()):
+        pointclouds_pair_list = list(pointclouds_pair.values())
+        Pi = pointclouds_pair_list[0].T
+        Pj = pointclouds_pair_list[1].T
+        combined_array = torch.vstack((Pi, Pj))
+        pointclouds.append(combined_array)
+    
+
+    pointclouds_teaser = [pc.detach().cpu().numpy() for pc in pointclouds]
+
+
+    solution, weights = TEASER_SimSync(N, edges, pointclouds_teaser, reg_lambda=0)
 
 
     frame_pose_index_pair = {0:0, 108:1, 199:2}
-
     loss_function = 0 
-    for key,value in scaled_cloud_camera_frame.items():
+    index_weights = 0
+    for index,(key,value) in enumerate(scaled_cloud_camera_frame.items()):
 
         frame1 = key[0]
         frame2 = key[1]
@@ -323,8 +405,26 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
         scales_frame1 = scales[frame_pose_index_pair[frame1]]
         scales_frame2 = scales[frame_pose_index_pair[frame2]]
 
-        loss_function += np.sum(np.linalg.norm(scales_frame1 * rotation_frame1 @ pointcloud_frame1.T + translation_frame1.reshape(translation_frame1.size,-1) - (scales_frame2 * rotation_frame2 @ pointcloud_frame2.T + translation_frame2.reshape(translation_frame2.size,-1)), axis=0))
-        tmp = 1
+        pointclouds_frame1_frame2 = pointclouds[index]
+        weights_frame1_frame2 = torch.tensor(weights[index_weights:pointclouds_frame1_frame2.shape[1]+index_weights])
+        index_weights = index_weights+pointclouds_frame1_frame2.shape[1]
 
+        pointcloud_frame1 = pointcloud_frame1.double()
+        pointcloud_frame2 = pointcloud_frame2.double()
+        
+        weighted_norms = weights_frame1_frame2 * (torch.norm(scales_frame1 * rotation_frame1 @ pointcloud_frame1.T + translation_frame1.reshape(translation_frame1.size()[0],1) - 
+                                    (scales_frame2 * rotation_frame2 @ pointcloud_frame2.T + translation_frame2.reshape(translation_frame2.size()[0],1)), dim=0)**2)
 
+        loss_function += torch.sum(weighted_norms)
+
+    optimizer.zero_grad()
+    loss_function.backward()
+    optimizer.step()
+
+    torch.cuda.empty_cache()
+
+    print(f"Loss: {loss_function.item()}")
+
+    # torch.save(model, 'weights/dpt_beit_large_512.pt')
+    torch.save(model.state_dict(), 'weights/dpt_beit_large_512.pt')
 

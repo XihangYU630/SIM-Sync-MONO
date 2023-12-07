@@ -1193,7 +1193,7 @@ if __name__ == "__main__":
     RPE_T = []
     RPE_R = []
     subopt = []
-    Rounds = 1
+    Rounds = 100
 
 
     for round in range(Rounds):
@@ -1348,7 +1348,7 @@ if __name__ == "__main__":
         pointclouds_input = pointclouds
         image_pair_correspondence_input = image_pair_correspondence
         #### Retrieve Depth and Finetune ####
-        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor)
+        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor, EssentialMap)
 
     avg_R_err = np.array(avg_R_err)
     avg_t_err = np.array(avg_t_err)
