@@ -39,6 +39,8 @@ import numpy as np
 from imutils.video import VideoStream
 from midas.model_loader import default_models, load_model
 
+# depth finetune #
+from DepthFinetune import Finetune_depth
 
 #######################
 #### with keyframe ####
@@ -1190,22 +1192,21 @@ if __name__ == "__main__":
     subopt = []
     Rounds = 1
 
+
     for round in range(Rounds):
+
+
+        ################################
+        ##### Stage 1: SIM-Sync ########
+        ################################
         pose_optimizer = PoseOptimizerTUM()
-        # image_pair_correspondence: (frame1, frame2) -> (h,w,2)
-
         EssentialMap, desired_timestamp, timestamps = pose_optimizer.get_EssentialMap()
-
-
         print("Get flow constraints:")
         image_pair_correspondence = pose_optimizer.get_matching_features_CAPS_EssentialMap(EssentialMap)
         print("Get depth maps:")
         scaled_cloud_camera_frame = pose_optimizer.get_depth_map_CAPS_MiDaS(image_pair_correspondence)
         print("Match points in frame pairs:")
         pose_optimizer.match_frame_pair_points(scaled_cloud_camera_frame)
-
-        # N = pose_optimizer.N
-
         N = len(EssentialMap)
         edges = list(pose_optimizer.scaled_cloud_camera_frame_dict.keys())
         for j in range(len(edges)):
@@ -1223,81 +1224,12 @@ if __name__ == "__main__":
             combined_array = np.vstack((Pi, Pj))
             pointclouds.append(combined_array)
 
-        print("########################################")
-        print("########## TEASER + SimSync ############")
-        print("########################################")
-
         start = time.time()
         scale_gt = np.ones((N, 1))
         solution, weights = TEASER_SimSync(N, edges, pointclouds, reg_lambda=0)
         end = time.time()
 
 
-        ################################
-        ######## GTSAM preproc #########
-        ################################
-
-        edges_original = list(pose_optimizer.scaled_cloud_camera_frame_dict.keys())
-        edges_corresponding = list(pose_optimizer.scaled_cloud_camera_frame_dict.keys())
-        for j in range(len(edges_corresponding)):
-            for i in range(len(EssentialMap)):
-                if edges_corresponding[j][0] == EssentialMap[i]:
-                    edges_corresponding[j] = (i,edges_corresponding[j][1])
-                if edges_corresponding[j][1] == EssentialMap[i]:
-                    edges_corresponding[j] = (edges_corresponding[j][0],i) 
-
-        camera_pair_mapping = defaultdict()
-        for j in range(len(edges_corresponding)):
-            camera_pair_mapping[edges_corresponding[j]] = edges_original[j]
-
-
-        correspondences_points = defaultdict()
-
-
-        index_point_counter = 0
-        for i in range(N):
-            correspondences_points['camera{}'.format(i)] = defaultdict()
-            for j in range(i, N):
-                correspondences_points['camera{}'.format(i)]['camera{}'.format(j)] = defaultdict()
-                if (i,j) in camera_pair_mapping:
-                    camera_pair = camera_pair_mapping[(i,j)]
-                    corresponding_points = image_pair_correspondence[camera_pair]
-                    correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['point_index'] = np.zeros((corresponding_points.shape[0], ))
-                    for k in range(corresponding_points.shape[0]):
-                        correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['point_index'][k] = index_point_counter
-                        index_point_counter += 1
-                    correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['pixel_coord_camera{}'.format(i)] = corresponding_points[:,0:2]
-        
-        for i in range(N):
-            for j in range(0, i): 
-                correspondences_points['camera{}'.format(i)]['camera{}'.format(j)] = defaultdict()  
-                if (j, i) in camera_pair_mapping:
-                    camera_pair = camera_pair_mapping[(j,i)]
-                    corresponding_points = image_pair_correspondence[camera_pair]
-                    correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['point_index'] = np.zeros((corresponding_points.shape[0], ))
-                    for k in range(corresponding_points.shape[0]):
-                        correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['point_index'][k] = correspondences_points['camera{}'.format(j)]['camera{}'.format(i)]['point_index'][k]
-                    correspondences_points['camera{}'.format(i)]['camera{}'.format(j)]['pixel_coord_camera{}'.format(i)] = corresponding_points[:,2:4]
-
-        solution['num_points'] = index_point_counter
-        if pose_optimizer.sequence_name == 'freiburg2_xyz':
-            with open("correspondences_points_GTSAM_xyz2.pickle", "wb") as file:
-                pickle.dump(correspondences_points, file)
-            with open('solution_GTSAM_xyz2.pickle', 'wb') as file:
-                pickle.dump(solution, file)
-        elif pose_optimizer.sequence_name == 'freiburg1_xyz':
-            with open("correspondences_points_GTSAM_xyz1.pickle", "wb") as file:
-                pickle.dump(correspondences_points, file)
-            with open('solution_GTSAM_xyz1.pickle', 'wb') as file:
-                pickle.dump(solution, file)
-
-
-        # with open("solution_GTSAMresults.pickle", "rb") as file:
-        #     solution = pickle.load(file)
-
-        ################################
-        ##### interpolate solution #####
-        ################################
 
         desired_times = desired_timestamp
         translations = []
@@ -1333,32 +1265,36 @@ if __name__ == "__main__":
         solution['R_est'] = reshaped_rotation.reshape(desired_times.shape[0]*3,3)
         solution['s_est'] = interpolated_scales
 
+        ## comment start ##
+        # print("Get ground truth trajectory:")
+        # pose_optimizer.get_gt_traj()
+        # # Save the defaultdict to a file
+        # with open('solution.pkl', 'wb') as file:
+        #     pickle.dump(solution, file)
 
-        print("Get ground truth trajectory:")
-        pose_optimizer.get_gt_traj()
-        # Save the defaultdict to a file
-        with open('solution.pkl', 'wb') as file:
-            pickle.dump(solution, file)
+        # print("Visualize camera trajectory:")
+        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        print("Visualize camera trajectory:")
-        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        # stats = pose_optimizer.printErr(solution)
+        # # Save the defaultdict to a file
+        # with open('solution.pkl', 'wb') as file:
+        #     pickle.dump(solution, file)
+        # print("Visualize camera trajectory:")
+        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        stats = pose_optimizer.printErr(solution)
-        # Save the defaultdict to a file
-        with open('solution.pkl', 'wb') as file:
-            pickle.dump(solution, file)
-        print("Visualize camera trajectory:")
-        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        # avg_R_err.append(stats['avg_R_err'])
+        # avg_t_err.append(stats['avg_t_err'])
+        # RPE_T.append(stats['RPE-T'])
+        # RPE_R.append(stats['RPE-R'])
+        # subopt.append(solution['relDualityGap'])
 
-        avg_R_err.append(stats['avg_R_err'])
-        avg_t_err.append(stats['avg_t_err'])
-        RPE_T.append(stats['RPE-T'])
-        RPE_R.append(stats['RPE-R'])
-        subopt.append(solution['relDualityGap'])
+        # pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
+        ## comment end ##
 
-        pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
+
+
+
         # pose_optimizer.visFilteredPointclouds(weights)
-
         # pose_optimizer.FullReconstruction(solution_path = 'solution.pkl') # full reconstruct
 
         # position = solution['t_est'][:, 0]
@@ -1394,6 +1330,21 @@ if __name__ == "__main__":
         # plt.grid(True)
         # plt.show()        
     
+        ################################
+        ### Stage 2: Depth Finetune ####
+        ################################
+
+        #### Get weights ####
+        weights_input = weights
+        #### Get Poses ####
+        pose_input = solution
+        #### Get Correspondences ####
+        edges_input = edges
+        pointclouds_input = pointclouds
+        image_pair_correspondence_input = image_pair_correspondence
+        #### Retrieve Depth and Finetune ####
+        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input)
+
     avg_R_err = np.array(avg_R_err)
     avg_t_err = np.array(avg_t_err)
     RPE_T = np.array(RPE_T)
