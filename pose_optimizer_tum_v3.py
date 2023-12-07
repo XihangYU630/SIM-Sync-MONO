@@ -42,6 +42,8 @@ from midas.model_loader import default_models, load_model
 # depth finetune #
 from DepthFinetune import Finetune_depth
 
+from copy import deepcopy
+
 #######################
 #### with keyframe ####
 #######################
@@ -1242,6 +1244,8 @@ if __name__ == "__main__":
             translations.append(solution['t_est'][:, i])
             rotations_quat.append(quaternion)
             scales.append(solution['s_est'][i])
+        
+        solution_input = deepcopy(solution)
 
         translations = np.array(translations)
         rotations_quat = np.array(rotations_quat)
@@ -1267,29 +1271,29 @@ if __name__ == "__main__":
         solution['s_est'] = interpolated_scales
 
         ## comment start ##
-        print("Get ground truth trajectory:")
-        pose_optimizer.get_gt_traj()
-        # Save the defaultdict to a file
-        with open('solution.pkl', 'wb') as file:
-            pickle.dump(solution, file)
+        # print("Get ground truth trajectory:")
+        # pose_optimizer.get_gt_traj()
+        # # Save the defaultdict to a file
+        # with open('solution.pkl', 'wb') as file:
+        #     pickle.dump(solution, file)
 
-        print("Visualize camera trajectory:")
-        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        # print("Visualize camera trajectory:")
+        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        stats = pose_optimizer.printErr(solution)
-        # Save the defaultdict to a file
-        with open('solution.pkl', 'wb') as file:
-            pickle.dump(solution, file)
-        print("Visualize camera trajectory:")
-        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        # stats = pose_optimizer.printErr(solution)
+        # # Save the defaultdict to a file
+        # with open('solution.pkl', 'wb') as file:
+        #     pickle.dump(solution, file)
+        # print("Visualize camera trajectory:")
+        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        avg_R_err.append(stats['avg_R_err'])
-        avg_t_err.append(stats['avg_t_err'])
-        RPE_T.append(stats['RPE-T'])
-        RPE_R.append(stats['RPE-R'])
-        subopt.append(solution['relDualityGap'])
+        # avg_R_err.append(stats['avg_R_err'])
+        # avg_t_err.append(stats['avg_t_err'])
+        # RPE_T.append(stats['RPE-T'])
+        # RPE_R.append(stats['RPE-R'])
+        # subopt.append(solution['relDualityGap'])
 
-        pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
+        # pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
         ## comment end ##
 
 
@@ -1338,13 +1342,13 @@ if __name__ == "__main__":
         #### Get weights ####
         weights_input = weights
         #### Get Poses ####
-        pose_input = solution
+        pose_input = solution_input
         #### Get Correspondences ####
         edges_input = edges
         pointclouds_input = pointclouds
         image_pair_correspondence_input = image_pair_correspondence
         #### Retrieve Depth and Finetune ####
-        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input)
+        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor)
 
     avg_R_err = np.array(avg_R_err)
     avg_t_err = np.array(avg_t_err)

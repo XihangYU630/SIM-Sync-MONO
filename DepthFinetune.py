@@ -9,6 +9,7 @@ import cv2
 import argparse
 import time
 import os.path as osp
+from scipy.spatial.transform import Rotation as R
 
 import numpy as np
 
@@ -91,6 +92,14 @@ def remove_nan_pairs(point_cloud_1, point_cloud_2):
 
     return filtered_point_cloud_1, filtered_point_cloud_2
 
+def scale_points(point_frame1, point_frame2, scale_factor):
+
+    scaled_set1 = point_frame1 * scale_factor
+    scaled_set2 = point_frame2 * scale_factor
+    
+    return scaled_set1, scaled_set2
+
+
 def get_intrinsics(sequence_name = 'freiburg2_xyz'):
     if sequence_name == 'freiburg1_xyz' \
         or sequence_name == 'freiburg1_rpy'\
@@ -109,7 +118,7 @@ def get_intrinsics(sequence_name = 'freiburg2_xyz'):
         cy = 249.7  # optical center y
     return fx, fy, cx, cy
 
-def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence):
+def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence, scale_factor):
 
     # midas param start #
     input_path = 'input'
@@ -133,7 +142,6 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
     rgb_dir = pred_path + '/color_full/'
     rgb_files = sorted(os.listdir(rgb_dir))
     number_files = int(len(predict_files)/2)
-    N = number_files
 
     scaled_cloud_camera_frame = defaultdict()
     for key, value in image_pair_correspondence.items():
@@ -270,8 +278,6 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
         scaled_cloud_camera_frame[key][frame2] = points
 
 
-
-
     for key, value in scaled_cloud_camera_frame.items():
 
         frame1, frame2 = key
@@ -279,7 +285,46 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence)
         point_frame2 = scaled_cloud_camera_frame[key][frame2]
 
         point_frame1, point_frame2 = remove_nan_pairs(point_frame1, point_frame2)
+
+        point_frame1, point_frame2 = scale_points(point_frame1, point_frame2, scale_factor)
         scaled_cloud_camera_frame[key][frame1] = point_frame1
         scaled_cloud_camera_frame[key][frame2] = point_frame2
-
     tmp = 1
+
+
+    translations = []
+    rotations = []
+    scales = []
+    N = pose['t_est'].shape[1]
+    for i in range(N):         
+        translations.append(pose['t_est'][:, i])
+        rotations.append(pose['R_est'][3*i:3*(i+1), :])
+        scales.append(pose['s_est'][i])
+    
+    translations = np.array(translations)
+    rotations = np.array(rotations)
+    scales = np.array(scales)
+
+
+    frame_pose_index_pair = {0:0, 108:1, 199:2}
+
+    loss_function = 0 
+    for key,value in scaled_cloud_camera_frame.items():
+
+        frame1 = key[0]
+        frame2 = key[1]
+        pointcloud_frame1 = value[frame1]
+        pointcloud_frame2 = value[frame2]
+
+        rotation_frame1 = rotations[frame_pose_index_pair[frame1]]
+        rotation_frame2 = rotations[frame_pose_index_pair[frame2]]
+        translation_frame1 = translations[frame_pose_index_pair[frame1]]
+        translation_frame2 = translations[frame_pose_index_pair[frame2]]
+        scales_frame1 = scales[frame_pose_index_pair[frame1]]
+        scales_frame2 = scales[frame_pose_index_pair[frame2]]
+
+        loss_function += np.sum(np.linalg.norm(scales_frame1 * rotation_frame1 @ pointcloud_frame1.T + translation_frame1.reshape(translation_frame1.size,-1) - (scales_frame2 * rotation_frame2 @ pointcloud_frame2.T + translation_frame2.reshape(translation_frame2.size,-1)), axis=0))
+        tmp = 1
+
+
+
