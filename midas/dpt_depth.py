@@ -104,7 +104,9 @@ class DPT(BaseModel):
         if self.number_layers >= 4:
             self.scratch.refinenet4 = _make_fusion_block(features, use_bn)
 
-        self.scratch.output_conv = head
+        # self.head_net = head
+
+        self.scratch.output_conv = head # xy
 
 
     def forward(self, x):
@@ -134,7 +136,10 @@ class DPT(BaseModel):
         if self.scratch.stem_transpose is not None:
             path_1 = self.scratch.stem_transpose(path_1)
 
-        out = self.scratch.output_conv(path_1)
+        # out = self.head_net(path_1)
+
+
+        out = self.scratch.output_conv(path_1) # xy
 
         return out
 

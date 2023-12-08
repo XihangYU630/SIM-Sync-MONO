@@ -137,9 +137,9 @@ def get_intrinsics(sequence_name = 'freiburg2_xyz'):
         cy = 249.7  # optical center y
     return fx, fy, cx, cy
 
-def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence, scale_factor, EssentialMap):
+def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence, scale_factor, EssentialMap, model, transform, net_w, net_h):
 
-    # midas param start #
+    # # midas param start #
     input_path = 'input'
     model_path = 'weights/dpt_beit_large_512.pt'
     model_type = 'dpt_beit_large_512'
@@ -151,15 +151,13 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
     grayscale = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: %s" % device)
-    model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
+    # model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
 
     for param in model.parameters():
         param.requires_grad = False
     # Unfreeze the last N layers
-    num_layers = 1  # Change N to the number of layers you want to unfreeze
-    for module in list(model.children())[-num_layers:]:
-        for param in module.parameters():
-            param.requires_grad = True
+    for param in model.scratch.output_conv.parameters():
+        param.requires_grad = True
 
     # Continue with optimizer and training
     model.train()
@@ -427,4 +425,6 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
 
     # torch.save(model, 'weights/dpt_beit_large_512.pt')
     torch.save(model.state_dict(), 'weights/dpt_beit_large_512.pt')
+
+    return loss_function.item()
 

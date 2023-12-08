@@ -893,22 +893,8 @@ class PoseOptimizerTUM(PoseOptimizer):
 
 
 
-    def get_depth_map_CAPS_MiDaS(self, image_pair_correspondence):
+    def get_depth_map_CAPS_MiDaS(self, image_pair_correspondence, model, transform, net_w, net_h):
         
-        # midas param start #
-        input_path = 'input'
-        model_path = 'weights/dpt_beit_large_512.pt'
-        model_type = 'dpt_beit_large_512'
-        optimize = False
-        output_path = 'output'
-        height = None
-        square = 'False'
-        side = False
-        grayscale = False
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Device: %s" % device)
-        model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
-        # midas param end #
 
 
 
@@ -1193,7 +1179,24 @@ if __name__ == "__main__":
     RPE_T = []
     RPE_R = []
     subopt = []
+    loss_list = []
     Rounds = 100
+
+
+    # midas param start #
+    input_path = 'input'
+    model_path = 'weights/dpt_beit_large_512.pt'
+    model_type = 'dpt_beit_large_512'
+    optimize = False
+    output_path = 'output'
+    height = None
+    square = 'False'
+    side = False
+    grayscale = False
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Device: %s" % device)
+    model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize, height, square)
+    # midas param end #
 
 
     for round in range(Rounds):
@@ -1207,7 +1210,7 @@ if __name__ == "__main__":
         print("Get flow constraints:")
         image_pair_correspondence = pose_optimizer.get_matching_features_CAPS_EssentialMap(EssentialMap)
         print("Get depth maps:")
-        scaled_cloud_camera_frame = pose_optimizer.get_depth_map_CAPS_MiDaS(image_pair_correspondence)
+        scaled_cloud_camera_frame = pose_optimizer.get_depth_map_CAPS_MiDaS(image_pair_correspondence, model, transform, net_w, net_h)
         print("Match points in frame pairs:")
         pose_optimizer.match_frame_pair_points(scaled_cloud_camera_frame)
         N = len(EssentialMap)
@@ -1271,27 +1274,27 @@ if __name__ == "__main__":
         solution['s_est'] = interpolated_scales
 
         ## comment start ##
-        # print("Get ground truth trajectory:")
-        # pose_optimizer.get_gt_traj()
-        # # Save the defaultdict to a file
-        # with open('solution.pkl', 'wb') as file:
-        #     pickle.dump(solution, file)
+        print("Get ground truth trajectory:")
+        pose_optimizer.get_gt_traj()
+        # Save the defaultdict to a file
+        with open('solution.pkl', 'wb') as file:
+            pickle.dump(solution, file)
 
-        # print("Visualize camera trajectory:")
-        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        print("Visualize camera trajectory:")
+        pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        # stats = pose_optimizer.printErr(solution)
-        # # Save the defaultdict to a file
-        # with open('solution.pkl', 'wb') as file:
-        #     pickle.dump(solution, file)
-        # print("Visualize camera trajectory:")
-        # # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
+        stats = pose_optimizer.printErr(solution)
+        # Save the defaultdict to a file
+        with open('solution.pkl', 'wb') as file:
+            pickle.dump(solution, file)
+        print("Visualize camera trajectory:")
+        # pose_optimizer.visCameraTraj(solution_path = 'solution.pkl')
 
-        # avg_R_err.append(stats['avg_R_err'])
-        # avg_t_err.append(stats['avg_t_err'])
-        # RPE_T.append(stats['RPE-T'])
-        # RPE_R.append(stats['RPE-R'])
-        # subopt.append(solution['relDualityGap'])
+        avg_R_err.append(stats['avg_R_err'])
+        avg_t_err.append(stats['avg_t_err'])
+        RPE_T.append(stats['RPE-T'])
+        RPE_R.append(stats['RPE-R'])
+        subopt.append(solution['relDualityGap'])
 
         # pose_optimizer.Reconstruction(solution_path = 'solution.pkl') # video
         ## comment end ##
@@ -1348,7 +1351,37 @@ if __name__ == "__main__":
         pointclouds_input = pointclouds
         image_pair_correspondence_input = image_pair_correspondence
         #### Retrieve Depth and Finetune ####
-        Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor, EssentialMap)
+        loss_value = Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor, EssentialMap, model, transform, net_w, net_h)
+        loss_list.append(loss_value)
+
+        # Plotting each error in a separate subplot
+        fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+        axs[0, 0].plot(avg_R_err, label='avg_R_err', color='blue')
+        axs[0, 0].set_title('Average R Error')
+        axs[0, 0].legend()
+        axs[0, 1].plot(avg_t_err, label='avg_t_err', color='green')
+        axs[0, 1].set_title('Average t Error')
+        axs[0, 1].legend()
+        axs[1, 0].plot(RPE_T, label='RPE-T', color='red')
+        axs[1, 0].set_title('Relative Pose Error T')
+        axs[1, 0].legend()
+        axs[1, 1].plot(RPE_R, label='RPE-R', color='purple')
+        axs[1, 1].set_title('Relative Pose Error R')
+        axs[1, 1].legend()
+        plt.tight_layout()
+        plt.show()
+
+        # Plotting the loss_list
+        plt.figure(figsize=(8, 6))
+        plt.plot(loss_list, label='Loss', color='orange')
+        plt.title('Loss Over Time')
+        plt.xlabel('Time')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
+
+
+
 
     avg_R_err = np.array(avg_R_err)
     avg_t_err = np.array(avg_t_err)
