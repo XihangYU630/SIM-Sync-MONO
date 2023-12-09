@@ -881,10 +881,10 @@ class PoseOptimizerTUM(PoseOptimizer):
             EssentialMap.append(0)
             timestamp_EssentialMap.append(rgb_timestamp[0])
 
-        # for i in range(0, len(rgb_timestamp), 40):
-        #     if i not in EssentialMap:
-        #         EssentialMap.append(i)
-        #         timestamp_EssentialMap.append(rgb_timestamp[i])
+        for i in range(0, len(rgb_timestamp), 40):
+            if i not in EssentialMap:
+                EssentialMap.append(i)
+                timestamp_EssentialMap.append(rgb_timestamp[i])
         
         EssentialMap = sorted(EssentialMap)
         timestamp_EssentialMap = sorted(timestamp_EssentialMap)
@@ -909,6 +909,8 @@ class PoseOptimizerTUM(PoseOptimizer):
         self.N = number_files
 
         scaled_cloud_camera_frame = defaultdict()
+
+        depth_error = []
 
         for key, value in image_pair_correspondence.items():
 
@@ -965,20 +967,29 @@ class PoseOptimizerTUM(PoseOptimizer):
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            # predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
             # if self.use_gt_depth == True:
             #     # Load the gt depth map
             #     predicted_depth = predicted_depth_gt
-            # if self.scale_factor == None:
-            #     reshaped_pred_depth = predicted_depth.reshape(-1)
-            #     min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-            #     min_values_pred = reshaped_pred_depth[min_indices]
-            #     reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-            #     min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-            #     min_values_gt = reshaped_predicted_depth_gt[min_indices]
-            #     pred_depth_mean = np.mean(min_values_pred)
-            #     gt_depth_mean = np.mean(min_values_gt)
-            #     self.scale_factor = gt_depth_mean / pred_depth_mean
+
+            if self.scale_factor == None:
+                reshaped_pred_depth = predicted_depth.reshape(-1)
+                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+                min_values_pred = reshaped_pred_depth[min_indices]
+                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+                min_values_gt = reshaped_predicted_depth_gt[min_indices]
+                pred_depth_mean = np.mean(min_values_pred)
+                gt_depth_mean = np.mean(min_values_gt)
+                self.scale_factor = gt_depth_mean / pred_depth_mean
+
+            predicted_depth_gt = predicted_depth_gt / self.scale_factor
+            error_map = (predicted_depth_gt - predicted_depth)**2
+            RMSE1 = error_map.reshape(-1)
+            RMSE2 = RMSE1[~np.isnan(RMSE1)]
+            RMSE = np.sqrt(1/len(RMSE2) * np.sum(RMSE2))
+            depth_error.append(RMSE)
+
 
             # read intrinsics
             fx_frame1, fy_frame1, cx_frame1, cy_frame1 = self.get_intrinsics(frame1)
@@ -1043,20 +1054,30 @@ class PoseOptimizerTUM(PoseOptimizer):
             predicted_depth = np.where(predicted_depth > threshold, np.nan, predicted_depth)
             predicted_depth = np.where(predicted_depth <= 0, np.nan, predicted_depth)
 
-            # predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
+            predicted_depth_gt = self.get_gt_depth(depth_filelist, rgb_time_stamp, depth_time_stamp, frame1)
             # if self.use_gt_depth == True:
             #     # Load the gt depth map
             #     predicted_depth = predicted_depth_gt
-            # if self.scale_factor == None:
-            #     reshaped_pred_depth = predicted_depth.reshape(-1)
-            #     min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
-            #     min_values_pred = reshaped_pred_depth[min_indices]
-            #     reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
-            #     min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
-            #     min_values_gt = reshaped_predicted_depth_gt[min_indices]
-            #     pred_depth_mean = np.mean(min_values_pred)
-            #     gt_depth_mean = np.mean(min_values_gt)
-            #     self.scale_factor = gt_depth_mean / pred_depth_mean
+            if self.scale_factor == None:
+                reshaped_pred_depth = predicted_depth.reshape(-1)
+                min_indices = np.argpartition(reshaped_pred_depth, 10000)[:10000]
+                min_values_pred = reshaped_pred_depth[min_indices]
+                reshaped_predicted_depth_gt = predicted_depth_gt.reshape(-1)
+                min_indices = np.argpartition(reshaped_predicted_depth_gt, 10000)[:10000]
+                min_values_gt = reshaped_predicted_depth_gt[min_indices]
+                pred_depth_mean = np.mean(min_values_pred)
+                gt_depth_mean = np.mean(min_values_gt)
+                self.scale_factor = gt_depth_mean / pred_depth_mean
+
+
+            predicted_depth_gt = predicted_depth_gt / self.scale_factor
+            error_map = (predicted_depth_gt - predicted_depth)**2
+            RMSE1 = error_map.reshape(-1)
+            RMSE2 = RMSE1[~np.isnan(RMSE1)]
+            RMSE = np.sqrt(1/len(RMSE2) * np.sum(RMSE2))
+            depth_error.append(RMSE)
+
+
 
             fx_frame2, fy_frame2, cx_frame2, cy_frame2 = self.get_intrinsics(frame2)            
 
@@ -1078,6 +1099,8 @@ class PoseOptimizerTUM(PoseOptimizer):
             points[:,1] = (y_frame2 - cy_frame2) * predicted_depth / fy_frame2
 
             scaled_cloud_camera_frame[key][frame2] = points
+        
+        depth_error_avg = sum(depth_error)/len(depth_error)
 
 
         ###########################
@@ -1169,7 +1192,7 @@ class PoseOptimizerTUM(PoseOptimizer):
                 visualizer.run()
                 visualizer.destroy_window()
 
-        return scaled_cloud_camera_frame 
+        return scaled_cloud_camera_frame, depth_error_avg
 
 
 if __name__ == "__main__":
@@ -1180,7 +1203,8 @@ if __name__ == "__main__":
     RPE_R = []
     subopt = []
     loss_list = []
-    Rounds = 100
+    depth_errors = []
+    Rounds = 7
 
 
     # midas param start #
@@ -1201,7 +1225,6 @@ if __name__ == "__main__":
 
     for round in range(Rounds):
 
-
         ################################
         ##### Stage 1: SIM-Sync ########
         ################################
@@ -1210,7 +1233,8 @@ if __name__ == "__main__":
         print("Get flow constraints:")
         image_pair_correspondence = pose_optimizer.get_matching_features_CAPS_EssentialMap(EssentialMap)
         print("Get depth maps:")
-        scaled_cloud_camera_frame = pose_optimizer.get_depth_map_CAPS_MiDaS(image_pair_correspondence, model, transform, net_w, net_h)
+        scaled_cloud_camera_frame, depth_error_avg = pose_optimizer.get_depth_map_CAPS_MiDaS(image_pair_correspondence, model, transform, net_w, net_h)
+        depth_errors.append(depth_error_avg)
         print("Match points in frame pairs:")
         pose_optimizer.match_frame_pair_points(scaled_cloud_camera_frame)
         N = len(EssentialMap)
@@ -1232,7 +1256,7 @@ if __name__ == "__main__":
 
         start = time.time()
         scale_gt = np.ones((N, 1))
-        solution, weights = TEASER_SimSync(N, edges, pointclouds, reg_lambda=0)
+        solution, weights = TEASER_SimSync(N, edges, pointclouds, reg_lambda=3)
         end = time.time()
 
 
@@ -1354,31 +1378,42 @@ if __name__ == "__main__":
         loss_value = Finetune_depth(weights_input, pose_input, edges_input, pointclouds_input, image_pair_correspondence_input, pose_optimizer.scale_factor, EssentialMap, model, transform, net_w, net_h)
         loss_list.append(loss_value)
 
-        # Plotting each error in a separate subplot
-        fig, axs = plt.subplots(2, 2, figsize=(10, 10))
-        axs[0, 0].plot(avg_R_err, label='avg_R_err', color='blue')
-        axs[0, 0].set_title('Average R Error')
-        axs[0, 0].legend()
-        axs[0, 1].plot(avg_t_err, label='avg_t_err', color='green')
-        axs[0, 1].set_title('Average t Error')
-        axs[0, 1].legend()
-        axs[1, 0].plot(RPE_T, label='RPE-T', color='red')
-        axs[1, 0].set_title('Relative Pose Error T')
-        axs[1, 0].legend()
-        axs[1, 1].plot(RPE_R, label='RPE-R', color='purple')
-        axs[1, 1].set_title('Relative Pose Error R')
-        axs[1, 1].legend()
-        plt.tight_layout()
-        plt.show()
 
-        # Plotting the loss_list
-        plt.figure(figsize=(8, 6))
-        plt.plot(loss_list, label='Loss', color='orange')
-        plt.title('Loss Over Time')
-        plt.xlabel('Time')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
+        if round % 3 == 0:
+            # Plotting each error in a separate subplot
+            fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+            axs[0, 0].plot(avg_R_err, label='avg_R_err', color='blue')
+            axs[0, 0].set_title('Average R Error')
+            axs[0, 0].legend()
+            axs[0, 1].plot(avg_t_err, label='avg_t_err', color='green')
+            axs[0, 1].set_title('Average t Error')
+            axs[0, 1].legend()
+            axs[1, 0].plot(RPE_T, label='RPE-T', color='red')
+            axs[1, 0].set_title('Relative Pose Error T')
+            axs[1, 0].legend()
+            axs[1, 1].plot(RPE_R, label='RPE-R', color='purple')
+            axs[1, 1].set_title('Relative Pose Error R')
+            axs[1, 1].legend()
+            plt.tight_layout()
+            plt.show()
+
+            # Plotting the loss_list
+            plt.figure(figsize=(8, 6))
+            plt.plot(loss_list, label='Loss', color='orange')
+            plt.title('Loss Over Time')
+            plt.xlabel('Time')
+            plt.ylabel('Loss')
+            plt.legend()
+            plt.show()
+
+
+            plt.figure(figsize=(8, 6))
+            plt.plot(depth_errors, label='Loss', color='orange')
+            plt.title('Depth Error Over Time')
+            plt.xlabel('Time')
+            plt.ylabel('Depth Error')
+            plt.legend()
+            plt.show()
 
 
 

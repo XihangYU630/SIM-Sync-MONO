@@ -159,6 +159,19 @@ def Finetune_depth(weights, pose, edges, pointclouds, image_pair_correspondence,
     for param in model.scratch.output_conv.parameters():
         param.requires_grad = True
 
+    # for param in model.scratch.refinenet1.parameters():
+    #     param.requires_grad = True
+
+    # for param in model.scratch.refinenet2.parameters():
+    #     param.requires_grad = True
+
+    # for param in model.scratch.refinenet3.parameters():
+    #     param.requires_grad = True
+
+    # for param in model.scratch.refinenet4.parameters():
+    #     param.requires_grad = True
+
+
     # Continue with optimizer and training
     model.train()
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
