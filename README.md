@@ -4,7 +4,7 @@ This repository contains a Python implementation of Joint Depth Estimation and C
 
 `Xihang Yu, Yuchen Zhou, Guoyuan Li. SIM-Sync-Mono: Joint Depth Estimation and Certifiably Optimal Synchronization Using Learned Module. EECS 442 Fall 2023`
 
-###  [Paper](https://arxiv.org/pdf/2012.05901.pdf) | [Video](https://www.youtube.com) | [Colab](https://colab.research.google.com/drive/1sE0VmWCuL6HUad3yXHEZoCvJKzAvINpz?authuser=1#scrollTo=_p7km19VLzx3)
+###  [Paper](https://xihangyu630.github.io/assets/pdf/SIM_Sync_Mono_final_project.pdf) | [Colab](https://colab.research.google.com/drive/1sE0VmWCuL6HUad3yXHEZoCvJKzAvINpz?authuser=1#scrollTo=_p7km19VLzx3)
 
 We introduce an innovative approach for estimating camera trajectories and 3D scene structures from multiview image keypoints by utilizing a pretrained depth prediction network that efficiently separates camera pose estimation and depth fine-tuning and a SIM-Sync solver to optimally solve the structured problem of camera trajectory estimation. The approach is validated through experiments on the TUM dataset.
 
